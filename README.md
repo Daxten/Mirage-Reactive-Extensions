@@ -41,21 +41,13 @@ class B extends NetworkBehaviour {
 * If the object gets destroyed, SyncLink will automaticly become "null". All events are triggered as expected.
 * SyncLink cleans after itself, no `.Dispose()` or anything required. 
 
-You can use to editor to Link objects ahead of time inside the editor.
+You can link objects ahead of time inside the editor.
 
 ```c#
 class A extends NetworkBehaviour { }
 
 class B extends NetworkBehaviour {
    SyncLink<A> Linked = new();
-   
-   private void Start() {
-       Identity.OnStartServer.AddListener(OnStartServer);
-   }
-   
-   private void OnStartServer() {
-       
-   }
 }
 ```
 
@@ -67,6 +59,14 @@ class B extends NetworkBehaviour {
 * SyncLinks cleans after itself, no `.Dispose()` or anything required.
 
 You can't use the edit at the moment to set `SyncLinks<T>` ahead of time.
+
+```c#
+class A extends NetworkBehaviour { }
+
+class B extends NetworkBehaviour {
+   SyncLinks<A> Linked = new();
+}
+```
 
 ## Editor
 To get full Editor support for these, make sure to add the following Compiler Flag to remove the default Mirage Editor:
