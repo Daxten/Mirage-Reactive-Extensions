@@ -1,0 +1,19 @@
+{
+    "name": "Daxten.MirageReactiveExtensions",
+    "rootNamespace": "",
+    "references": [
+        "Mirage",
+        "Mirage.SocketLayer",
+        "UniTask",
+        "UniTask.Linq"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

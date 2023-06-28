@@ -1,0 +1,93 @@
+name: Tests
+
+on: 
+  pull_request:
+    types: 
+     - ready_for_review
+  push:
+    branches:
+     - main
+    paths-ignore:
+      - 'doc/**'
+      - '*.md'
+  
+jobs:
+  Tests:
+    if: false
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+    steps:
+  
+      # Checkout repository (required to test local actions)
+      - name: Checkout Mirror
+        uses: actions/checkout@v2
+        with:
+          repository: vis2k/Mirror
+          fetch-depth: 0
+
+      - name: Checkout NetworkPositionSync
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          path: Assets/PositionSync
+
+      - name: Activate license
+        uses: MirageNet/unity-runner@2.0.0
+        with:
+          entrypoint: /activate.sh
+          
+      - name: Generate Solution
+        uses: MirageNet/unity-runner@2.0.0
+        with:
+          # Arguments to pass to unity
+          args: -buildTarget StandaloneWindows64 -customBuildName MirrorNG -customBuildPath ./build/StandaloneWindows64 -projectPath . -executeMethod  UnityEditor.SyncVS.SyncSolution -quit
+
+      # Configure test runner
+      - name: Run editor Tests
+        uses: MirageNet/unity-runner@2.0.0
+        with:
+          args: -runTests -testPlatform editmode -testResults Tests/editmode-results.xml -enableCodeCoverage -coverageResultsPath Tests -editorTestsCategories NetworkPositionSync
+
+      - name: Run play Tests
+        uses: MirageNet/unity-runner@2.0.0
+        with:
+          args: -runTests -testPlatform playmode -testResults Tests/playmode-results.xml -enableCodeCoverage -coverageResultsPath Tests -editorTestsCategories NetworkPositionSync
+          
+      # Upload artifacts
+      - name: Archive test results
+        uses: actions/upload-artifact@v1
+        if: always()
+        with:
+          name: Test results (editor mode)
+          path: Tests
+
+      - name: Publish test results
+        uses: MirageNet/nunit-reporter@v1.0.9
+        if: always()
+        with:
+          path: "Tests/*.xml"
+          access-token: ${{ secrets.GITHUB_TOKEN }}
+  
+      - name: SonarQube analysis
+        if: always()
+        uses: MirageNet/unity-runner@2.0.0
+        with:
+          entrypoint: /sonar-scanner.sh
+          projectKey: James-Frowen_NetworkPositionSync
+          projectName: NetworkPositionSync
+          sonarOrganisation: james-frowen
+          solution: ./JamesFrowen.PositionSync.csproj
+          beginArguments: >-
+              /d:sonar.verbose="true" 
+              /d:sonar.cs.nunit.reportsPaths=Tests/editmode-results.xml,Tests/playimode-results.xml 
+              /d:sonar.cs.opencover.reportsPaths=Tests/workspace-opencov/EditMode/TestCoverageResults_0000.xml,Tests/workspace-opencov/PlayMode/TestCoverageResults_0000.xml
+              /d:sonar.exclusions=Assets/Mirror/**/*
+              /d:sonar.inclusions=Assets/PositionSync/source/**/*
+              /d:sonar.scm.exclusions.disabled=true
+        env:
+          FrameworkPathOverride: /opt/Unity/Editor/Data/MonoBleedingEdge/
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
