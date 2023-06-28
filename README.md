@@ -1,25 +1,81 @@
 # MirageReactiveExtensions
 
-Network Transform using Snapshot Interpolation and other techniques to best sync position and rotation over the network. 
+Provides Reactive extensions to Mirage. 
+
+## Requirements
+* Mirage >v145
+* API Compatibility Level .NET Framework 
+    * only for the editor at the moment.
 
 ## Download
 
-### Package Manager
+use package manager to get versions easily, or replace `#v0.0.2` with the tag, branch or full hash of the commit.
 
-use package manager to get versions easily, or replace `#v0.0.1` with the tag, branch or full hash of the commit.
-
-IMPORTANT: update `v0.0.1` with latest version on release page
+IMPORTANT: update `v0.0.2` with latest version on release page
 ```json
 "de.daxten.mirage-reactive-extensions": "https://github.com/Daxten/Mirage-Reactive-Extensions.git?path=/Assets/MirageReactiveExtensions#v0.0.1",
 ```
 
-### Unity package
+## SyncVar
+`SyncVar<T> MyVar` is similar to `[SyncVar] T MyVar` but lifts the Value into `AsyncReactiveProperty<T>`.
 
-Download the UnityPackage or source code from [Release](https://github.com/Daxten/Mirage-Reactive-Extensions/releases) page.
+```c#
+class A extends NetworkBehaviour {
+   public SyncVar<int> Health = new(100);
+   
+   [Server]
+   public void OnHit() { Health.Value -= 10; }
+}
 
-## Setup
+class B extends NetworkBehaviour {
+   public void ObserveA(A a) {
+      Health.Where(n => n <= 0).ForEachAsync(e => Debug.Log("My Friend A just died!")), destroyCancellationToken);
+   }
+}
+```
 
-TODO
+## SyncLink
+`SyncLink<T>` allows you to create a Link/Relation to another Network Object. SyncLink manages all problems associated with this.
+
+* If the object is not spawned yet, it will await for it to spawn and then start syncing it
+* If the object gets destroyed, SyncLink will automaticly become "null". All events are triggered as expected.
+* SyncLink cleans after itself, no `.Dispose()` or anything required. 
+
+You can use to editor to Link objects ahead of time inside the editor.
+
+```c#
+class A extends NetworkBehaviour { }
+
+class B extends NetworkBehaviour {
+   SyncLink<A> Linked = new();
+   
+   private void Start() {
+       Identity.OnStartServer.AddListener(OnStartServer);
+   }
+   
+   private void OnStartServer() {
+       
+   }
+}
+```
+
+## SyncLinks
+`SyncLinks<T>` allows you to create a Link/Relation to a Set of other Network Objects. SyncLinks manages all problems associated with this.
+
+* If an object is not spawned yet, it will await for it to spawn and then add and sync it.
+* If any object gets destroyed, SyncLinks will automaticly remove it from the set. All events are triggered as expected.
+* SyncLinks cleans after itself, no `.Dispose()` or anything required.
+
+You can't use the edit at the moment to set `SyncLinks<T>` ahead of time.
+
+## Editor
+To get full Editor support for these, make sure to add the following Compiler Flag to remove the default Mirage Editor:
+* Edit
+* Project Settings
+* Player
+* Other Settings
+* Script Compilation
+* Add `EXCLUDE_NETWORK_BEHAVIOUR_INSPECTOR`
 
 ## Bugs?
 

@@ -5,7 +5,9 @@
         "Mirage",
         "Mirage.SocketLayer",
         "UniTask",
-        "UniTask.Linq"
+        "UniTask.Linq",
+        "Mirage.Editor",
+        "Unity.VisualScripting.Core"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
