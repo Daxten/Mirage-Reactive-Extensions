@@ -1,11 +1,12 @@
-﻿using System;
+﻿#if (UNITY_EDITOR) 
+
+using System;
 using System.Collections.Generic;
 using Mirage;
 using MirageReactiveExtensions.Runtime;
 using Unity.VisualScripting;
 using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 [CustomEditor(typeof(NetworkBehaviour), true)]
@@ -113,3 +114,5 @@ public class CustomNetworkBehaviourEditor : NetworkBehaviourInspector
         return root;
     }
 }
+
+#endif
