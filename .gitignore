@@ -558,3 +558,5 @@ FodyWeavers.xsd
 !Assets/**/*~
 !Packages/manifest.json
 !Packages/packages-lock.json
+
+.idea

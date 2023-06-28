@@ -6,7 +6,7 @@ VER=$(echo $1 | sed 's/-[a-z]*//g')
 sed -i -e '/AssemblyVersion/s/\".*\"/\"'$VER'\"/' \
     ${SOURCE_PATH}/Runtime/AssemblyInfo.cs
 
-unity-packer pack NetworkPositionSync.unitypackage \
+unity-packer pack MirageReactiveExtensions.unitypackage \
     ${SOURCE_PATH}/Runtime ${TARGET_PATH}/Runtime \
     ${SOURCE_PATH}/CHANGELOG.md ${TARGET_PATH}/CHANGELOG.md \
     ${SOURCE_PATH}/LICENSE ${TARGET_PATH}/LICENSE \
