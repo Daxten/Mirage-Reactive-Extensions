@@ -7,10 +7,10 @@
   "author": "Alexej Haak",
   "repository": {
     "type": "git",
-    "url": "https://github.com/James-Frowen/NetworkPositionSync.git"
+    "url": "https://github.com/Daxten/Mirage-Reactive-Extensions.git"
   },
   "dependencies": {
-    "com.miragenet.mirage": "131.0.0"
+    "com.miragenet.mirage": "145.0.0"
   },
   "samples": []
 }
