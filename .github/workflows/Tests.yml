@@ -27,12 +27,12 @@ jobs:
           repository: vis2k/Mirror
           fetch-depth: 0
 
-      - name: Checkout NetworkPositionSync
+      - name: Checkout MirageReactiveExtensions
         uses: actions/checkout@v2
         with:
           submodules: recursive
           fetch-depth: 0
-          path: Assets/PositionSync
+          path: Assets/MirageReactiveExtensions
 
       - name: Activate license
         uses: MirageNet/unity-runner@2.0.0

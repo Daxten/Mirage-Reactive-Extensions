@@ -8,9 +8,9 @@ on:
 jobs:
   Release:
     env:
-      SOURCE_PATH: Assets/NetworkPositionSync
+      SOURCE_PATH: Assets/MirageReactiveExtensions
       # target path should be path inside unityPackage, should be inside asset folder
-      TARGET_PATH: Assets/NetworkPositionSync
+      TARGET_PATH: Assets/MirageReactiveExtensions
     runs-on: ubuntu-latest
     steps:
       - name: Setup dotnet
