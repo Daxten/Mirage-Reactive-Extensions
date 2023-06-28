@@ -1,4 +1,4 @@
-﻿#if (UNITY_EDITOR) 
+﻿#if (UNITY_EDITOR)
 
 using System;
 using System.Collections.Generic;
@@ -93,7 +93,9 @@ public class CustomNetworkBehaviourEditor : NetworkBehaviourInspector
         {
             if (SkippedTypes.Contains(iterator.type)) continue;
 
-            var field = new PropertyField(iterator);
+            var field = iterator.type == "SyncVar`1"
+                ? new PropertyField(iterator.FindPropertyRelative("latestValue"), iterator.displayName)
+                : new PropertyField(iterator);
 
             // Disable the script field.
             if (iterator.propertyPath == "m_Script")
