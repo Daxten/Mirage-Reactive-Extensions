@@ -4,16 +4,14 @@ Provides Reactive extensions to Mirage.
 
 ## Requirements
 * Mirage >v145
-* API Compatibility Level .NET Framework 
-    * only for the editor at the moment.
 
 ## Download
 
-use package manager to get versions easily, or replace `#v0.0.3` with the tag, branch or full hash of the commit.
+use package manager to get versions easily, or replace `#v0.0.4` with the tag, branch or full hash of the commit.
 
-IMPORTANT: update `v0.0.3` with latest version on release page
+IMPORTANT: update `v0.0.4` with latest version on release page
 ```json
-"de.daxten.mirage-reactive-extensions": "https://github.com/Daxten/Mirage-Reactive-Extensions.git?path=/Assets/MirageReactiveExtensions#v0.0.3",
+"de.daxten.mirage-reactive-extensions": "https://github.com/Daxten/Mirage-Reactive-Extensions.git?path=/Assets/MirageReactiveExtensions#v0.0.4",
 ```
 
 ## SyncVar
