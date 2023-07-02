@@ -11,17 +11,18 @@ using UnityEngine;
 
 namespace MirageReactiveExtensions.Runtime
 {
-    public interface ISyncLink { }
-    
+    public interface ISyncLink
+    {
+    }
+
     [Serializable]
     public class SyncLink<T> : AsyncReactiveProperty<T>, ISyncObject, ISyncLink where T : NetworkBehaviour
     {
         private uint _netId;
         private CancellationTokenSource _ct;
         private CancellationTokenSource _onDestroyToken;
-        private static readonly EqualityComparer<T> Comparer = EqualityComparer<T>.Default;
         private NetworkBehaviour _networkBehaviour;
-        public bool HasValue => !Comparer.Equals(Value, null);
+        public bool HasValue => Value != null;
 
         public SyncLink() : this(default)
         {
@@ -30,7 +31,7 @@ namespace MirageReactiveExtensions.Runtime
 
         public SyncLink(T entity) : base(entity)
         {
-            if (!Comparer.Equals(entity, null))
+            if (entity != null)
             {
                 _netId = entity.NetId;
             }
@@ -41,7 +42,7 @@ namespace MirageReactiveExtensions.Runtime
 
         private void DidChange()
         {
-            if (Comparer.Equals(Value, null) && _netId != 0)
+            if (!HasValue && _netId != 0)
             {
                 _netId = 0;
                 IsDirty = true;
@@ -49,7 +50,7 @@ namespace MirageReactiveExtensions.Runtime
                 return;
             }
 
-            if (Comparer.Equals(Value, null) || (Value.Identity.NetId == _netId && Value.Identity.IsSpawned)) return;
+            if (!HasValue || (Value.Identity.NetId == _netId && Value.Identity.IsSpawned)) return;
 
             if (!Value.Identity.IsSpawned)
                 Value.Identity.OnStartServer.AddListener(UpdateNetId);
@@ -94,7 +95,7 @@ namespace MirageReactiveExtensions.Runtime
             var netId = reader.ReadPackedUInt32();
 
             if (netId == _netId) return;
-            
+
             if (netId > 0)
             {
                 _netId = netId;
@@ -106,6 +107,7 @@ namespace MirageReactiveExtensions.Runtime
                     await UniTask.WaitUntil(() => locator.TryGetIdentity(_netId, out target),
                         cancellationToken: _ct.Token, timing: PlayerLoopTiming.EarlyUpdate);
                 }
+
                 Value = target.GetComponent<T>();
                 SetNullOnDestroy(Value).Forget();
             }
@@ -123,7 +125,8 @@ namespace MirageReactiveExtensions.Runtime
             await UniTask.WhenAny(
                 UniTask.WaitUntilCanceled(_ct.Token),
                 UniTask.WaitUntilCanceled(_networkBehaviour.destroyCancellationToken),
-                target.OnDestroyAsync()
+                target.OnDestroyAsync(),
+                target.OnDespawnAsync()
             );
 
             if (target == Value)

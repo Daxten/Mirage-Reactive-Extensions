@@ -282,7 +282,8 @@ namespace MirageReactiveExtensions.Runtime
 
             await UniTask.WhenAny(
                 UniTask.WaitUntilCanceled(_networkBehaviour.destroyCancellationToken),
-                item.OnDestroyAsync()
+                item.OnDestroyAsync(),
+                item.OnDespawnAsync()
             );
 
             objects.Remove(item);
