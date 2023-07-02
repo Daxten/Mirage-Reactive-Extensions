@@ -9,6 +9,7 @@ using Mirage.Serialization;
 
 namespace MirageReactiveExtensions.Runtime
 {
+    [Serializable]
     public class SyncLinks<T> : ISet<T>, ISyncObject where T : NetworkBehaviour
     {
         private readonly HashSet<T> objects;
@@ -18,7 +19,6 @@ namespace MirageReactiveExtensions.Runtime
         void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
 
         private NetworkBehaviour _networkBehaviour;
-
         internal int ChangeCount => _changes.Count;
 
         /// <summary>
@@ -174,8 +174,13 @@ namespace MirageReactiveExtensions.Runtime
         {
             await UniTask.WaitUntil(() => _networkBehaviour != null);
             NetworkIdentity networkIdentity = null;
-            await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                cancellationToken: _networkBehaviour.destroyCancellationToken);
+            if (!locator.TryGetIdentity(netId, out networkIdentity))
+            {
+                await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
+                    cancellationToken: _networkBehaviour.destroyCancellationToken,
+                    timing: PlayerLoopTiming.EarlyUpdate);
+            }
+
             var comp = networkIdentity.GetComponent<T>();
             objects.Add(comp);
             RemoveOnDestroy(comp).Forget();
@@ -188,8 +193,13 @@ namespace MirageReactiveExtensions.Runtime
         {
             await UniTask.WaitUntil(() => _networkBehaviour != null);
             NetworkIdentity networkIdentity = null;
-            await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                cancellationToken: _networkBehaviour.destroyCancellationToken);
+            if (!locator.TryGetIdentity(netId, out networkIdentity))
+            {
+                await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
+                    cancellationToken: _networkBehaviour.destroyCancellationToken,
+                    timing: PlayerLoopTiming.EarlyUpdate);
+            }
+
             var comp = networkIdentity.GetComponent<T>();
             objects.Remove(comp);
             OnRemove?.Invoke(comp);

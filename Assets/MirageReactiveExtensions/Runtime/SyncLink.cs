@@ -7,6 +7,7 @@ using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
+using UnityEngine;
 
 namespace MirageReactiveExtensions.Runtime
 {
@@ -48,7 +49,7 @@ namespace MirageReactiveExtensions.Runtime
                 return;
             }
 
-            if (Comparer.Equals(Value, null) || Value.Identity.NetId == _netId && Value.Identity.IsSpawned) return;
+            if (Comparer.Equals(Value, null) || (Value.Identity.NetId == _netId && Value.Identity.IsSpawned)) return;
 
             if (!Value.Identity.IsSpawned)
                 Value.Identity.OnStartServer.AddListener(UpdateNetId);
@@ -99,8 +100,12 @@ namespace MirageReactiveExtensions.Runtime
                 _netId = netId;
                 NetworkIdentity target = null;
                 var locator = reader.ToMirageReader().ObjectLocator;
-                _ct = CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken);
-                await UniTask.WaitUntil(() => locator.TryGetIdentity(_netId, out target), cancellationToken: _ct.Token);
+                if (!locator.TryGetIdentity(_netId, out target))
+                {
+                    _ct = CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken);
+                    await UniTask.WaitUntil(() => locator.TryGetIdentity(_netId, out target),
+                        cancellationToken: _ct.Token, timing: PlayerLoopTiming.EarlyUpdate);
+                }
                 Value = target.GetComponent<T>();
                 SetNullOnDestroy(Value).Forget();
             }
