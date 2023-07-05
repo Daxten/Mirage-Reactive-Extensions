@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
@@ -21,6 +20,11 @@ namespace MirageReactiveExtensions.Runtime
         public int Count => objects.Count;
         public bool IsReadOnly { get; private set; }
         void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+
+        private CancellationTokenSource _onDestroyTokenSource;
+
+        private CancellationTokenSource NewObserverToken =>
+            CancellationTokenSource.CreateLinkedTokenSource(_onDestroyTokenSource.Token);
 
         private NetworkBehaviour _networkBehaviour;
         internal int ChangeCount => _changes.Count;
@@ -74,10 +78,15 @@ namespace MirageReactiveExtensions.Runtime
         public SyncLinks()
         {
             objects = new HashSet<T>();
+            _onDestroyTokenSource = new CancellationTokenSource();
         }
 
         public void Reset()
         {
+            _onDestroyTokenSource?.Cancel();
+            _onDestroyTokenSource = new CancellationTokenSource();
+
+            _observerTokens.Clear();
             IsReadOnly = false;
             _changes.Clear();
             _changesAhead = 0;
@@ -87,6 +96,13 @@ namespace MirageReactiveExtensions.Runtime
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
             _networkBehaviour = networkBehaviour;
+            CleanupOnNetworkBehaviourDestroy().Forget();
+        }
+
+        private async UniTaskVoid CleanupOnNetworkBehaviourDestroy()
+        {
+            await _networkBehaviour.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_onDestroyTokenSource.Token);
+            _onDestroyTokenSource.Cancel();
         }
 
         public bool IsDirty => _changes.Count > 0;
@@ -177,13 +193,11 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTask EventuallyAdd(IObjectLocator locator, uint netId)
         {
-            await UniTask.WaitUntil(() => _networkBehaviour != null);
             NetworkIdentity networkIdentity = null;
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
                 await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                    cancellationToken: _networkBehaviour.destroyCancellationToken,
-                    timing: PlayerLoopTiming.EarlyUpdate);
+                    cancellationToken: _onDestroyTokenSource.Token, timing: PlayerLoopTiming.EarlyUpdate);
             }
 
             var comp = networkIdentity.GetComponent<T>();
@@ -296,34 +310,18 @@ namespace MirageReactiveExtensions.Runtime
                 ct = t1;
             else
             {
-                ct = new CancellationTokenSource();
+                ct = NewObserverToken;
                 _observerTokens[item.gameObject] = ct;
             }
 
-            _observerTokens[item.gameObject] = ct;
-            await UniTask.WaitUntil(() => _networkBehaviour != null, cancellationToken: ct.Token);
-            if (!item) return;
-
-            var linkedToken =
-                CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken, ct.Token);
-
             await UniTask.WhenAny(
-                UniTask.WaitUntilCanceled(linkedToken.Token),
                 UniTask.WaitUntilCanceled(ct.Token),
                 item.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(ct.Token),
                 item.OnDespawnAsync(ct.Token)
             );
 
-            linkedToken.Cancel();
-            linkedToken.Dispose();
-
-            if (_observerTokens.TryGetValue(item.gameObject, out var t2))
-            {
-                t2.Cancel();
-                t2.Dispose();
-                _observerTokens.Remove(item.gameObject);
-            }
-
+            ct.Cancel();
+            _observerTokens.Remove(item.gameObject);
             objects.Remove(item);
             OnRemove?.Invoke(item);
         }
@@ -333,10 +331,9 @@ namespace MirageReactiveExtensions.Runtime
         public void Clear()
         {
             objects.Clear();
-            foreach (var cancellationTokenSource in _observerTokens.ToArray())
+            foreach (var token in _observerTokens.Select(e => e.Value).ToArray())
             {
-                cancellationTokenSource.Value.Cancel();
-                cancellationTokenSource.Value.Dispose();
+                token.Cancel();
             }
 
             _observerTokens.Clear();
@@ -350,18 +347,19 @@ namespace MirageReactiveExtensions.Runtime
 
         public bool Remove(T item)
         {
+            if (!item) return false;
+
             if (objects.Remove(item))
             {
-                if (item && _observerTokens.TryGetValue(item.gameObject, out var t2))
+                if (_observerTokens.TryGetValue(item.gameObject, out var token))
                 {
-                    t2.Cancel();
-                    t2.Dispose();
+                    token.Cancel();
                     _observerTokens.Remove(item.gameObject);
                 }
 
                 OnRemove?.Invoke(item);
 
-                if (item) AddOperation(Operation.OP_REMOVE, item);
+                AddOperation(Operation.OP_REMOVE, item);
                 return true;
             }
 

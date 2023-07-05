@@ -19,10 +19,17 @@ namespace MirageReactiveExtensions.Runtime
     public class SyncLink<T> : AsyncReactiveProperty<T>, ISyncObject, ISyncLink where T : NetworkBehaviour
     {
         private uint _netId;
-        private CancellationTokenSource _ct;
-        private CancellationTokenSource _onDestroyToken;
+
+        // Token is used for all ongoing tasks, which can be cancelled when the value changes
+        private CancellationTokenSource _tokenForCurrentValue;
+
+        // Token is used, so we do not have to wait for _networkBehaviour to be set
+        private CancellationTokenSource _onDestroyNetworkBehaviourToken;
         private NetworkBehaviour _networkBehaviour;
-        public bool HasValue => Value != null;
+        public bool HasValue => Value;
+
+        private CancellationTokenSource NewTokenForCurrentValue =>
+            CancellationTokenSource.CreateLinkedTokenSource(_onDestroyNetworkBehaviourToken.Token);
 
         public SyncLink() : this(default)
         {
@@ -36,30 +43,47 @@ namespace MirageReactiveExtensions.Runtime
                 _netId = entity.NetId;
             }
 
-            _ct = new CancellationTokenSource();
-            _onDestroyToken = new CancellationTokenSource();
+            _onDestroyNetworkBehaviourToken = new CancellationTokenSource();
+            _tokenForCurrentValue = NewTokenForCurrentValue;
+        }
+
+        private void CancelRunningTasks()
+        {
         }
 
         private void DidChange()
         {
             if (!HasValue && _netId != 0)
             {
-                _netId = 0;
-                IsDirty = true;
-                OnChange?.Invoke();
+                SwitchToNull();
                 return;
             }
 
+            if (!HasValue && _netId == 0) return;
             if (!HasValue || (Value.Identity.NetId == _netId && Value.Identity.IsSpawned)) return;
-
             if (!Value.Identity.IsSpawned)
+            {
                 Value.Identity.OnStartServer.AddListener(UpdateNetId);
+            }
             else
+            {
                 UpdateNetId();
+            }
+        }
+
+        private void SwitchToNull(bool isDirty = true)
+        {
+            _netId = 0;
+            IsDirty = isDirty;
+            _tokenForCurrentValue?.Cancel();
+            OnChange?.Invoke();
         }
 
         private void UpdateNetId()
         {
+            Value.Identity.OnStartServer.RemoveListener(UpdateNetId);
+            _tokenForCurrentValue?.Cancel();
+            _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = Value.NetId;
             IsDirty = true;
             OnChange?.Invoke();
@@ -86,14 +110,13 @@ namespace MirageReactiveExtensions.Runtime
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            _ct?.Cancel();
+            _tokenForCurrentValue?.Cancel();
             EventuallySetValue(reader).Forget();
         }
 
         private async UniTaskVoid EventuallySetValue(NetworkReader reader)
         {
             var netId = reader.ReadPackedUInt32();
-
             if (netId == _netId) return;
 
             if (netId > 0)
@@ -103,9 +126,8 @@ namespace MirageReactiveExtensions.Runtime
                 var locator = reader.ToMirageReader().ObjectLocator;
                 if (!locator.TryGetIdentity(_netId, out target))
                 {
-                    _ct = CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken);
                     await UniTask.WaitUntil(() => locator.TryGetIdentity(_netId, out target),
-                        cancellationToken: _ct.Token, timing: PlayerLoopTiming.EarlyUpdate);
+                        cancellationToken: _tokenForCurrentValue.Token, timing: PlayerLoopTiming.EarlyUpdate);
                 }
 
                 Value = target.GetComponent<T>();
@@ -122,25 +144,14 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTaskVoid SetNullOnDestroy(T target)
         {
-            var linkedToken =
-                CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken, _ct.Token);
             await UniTask.WhenAny(
-                UniTask.WaitUntilCanceled(linkedToken.Token),
-                UniTask.WaitUntilCanceled(_ct.Token),
-                target.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_ct.Token),
-                target.OnDespawnAsync(_ct.Token)
+                UniTask.WaitUntilCanceled(_tokenForCurrentValue.Token),
+                target.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_tokenForCurrentValue.Token),
+                target.OnDespawnAsync(_tokenForCurrentValue.Token)
             );
 
-            linkedToken.Cancel();
-            linkedToken.Dispose();
-
             if (target == Value)
-            {
-                _ct?.Cancel();
-                _ct?.Dispose();
-                Value = null;
-                OnChange?.Invoke();
-            }
+                SwitchToNull(false);
         }
 
         public void OnDeserializeDelta(NetworkReader reader)
@@ -150,6 +161,8 @@ namespace MirageReactiveExtensions.Runtime
 
         public void Reset()
         {
+            _onDestroyNetworkBehaviourToken?.Cancel();
+            _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = 0;
             IsDirty = false;
         }
@@ -157,21 +170,16 @@ namespace MirageReactiveExtensions.Runtime
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
             _networkBehaviour = networkBehaviour;
-            this.ForEachAsync(_ => DidChange(), _onDestroyToken.Token);
+            this.ForEachAsync(_ => DidChange(), _onDestroyNetworkBehaviourToken.Token);
             CleanUpOnDestroy().Forget();
         }
 
         private async UniTaskVoid CleanUpOnDestroy()
         {
-            await UniTask.WaitUntil(() => _networkBehaviour != null, cancellationToken: _ct.Token);
-            await UniTask.WhenAny(
-                _networkBehaviour.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_ct.Token),
-                UniTask.WaitUntilCanceled(_ct.Token)
-            );
-            _ct?.Cancel();
-            _ct?.Dispose();
-            _onDestroyToken?.Cancel();
-            _onDestroyToken?.Dispose();
+            await _networkBehaviour.GetCancellableAsyncDestroyTrigger()
+                .OnDestroyAsync(_onDestroyNetworkBehaviourToken.Token);
+            _tokenForCurrentValue?.Cancel();
+            _onDestroyNetworkBehaviourToken?.Cancel();
         }
 
         public bool IsDirty { get; private set; }
