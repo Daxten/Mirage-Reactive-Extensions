@@ -113,8 +113,6 @@ namespace MirageReactiveExtensions.Runtime
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            _tokenForCurrentValue?.Cancel();
-            _tokenForCurrentValue?.Dispose();
             EventuallySetValue(reader).Forget();
         }
 
@@ -122,7 +120,16 @@ namespace MirageReactiveExtensions.Runtime
         {
             var netId = reader.ReadPackedUInt32();
             if (netId == _netId) return;
-
+            
+            // we do not need to reset the token for null, since we don't have start
+            // any tasks for it
+            if (_netId > 0)
+            {
+                _tokenForCurrentValue?.Cancel();
+                _tokenForCurrentValue?.Dispose();
+                _tokenForCurrentValue = NewTokenForCurrentValue;
+            }
+            
             if (netId > 0)
             {
                 _netId = netId;
@@ -165,9 +172,8 @@ namespace MirageReactiveExtensions.Runtime
 
         public void Reset()
         {
-            _onDestroyNetworkBehaviourToken?.Cancel();
-            _onDestroyNetworkBehaviourToken?.Dispose();
-            _onDestroyNetworkBehaviourToken = new CancellationTokenSource();
+            _tokenForCurrentValue?.Cancel();
+            _tokenForCurrentValue?.Dispose();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = 0;
             IsDirty = false;
@@ -184,7 +190,9 @@ namespace MirageReactiveExtensions.Runtime
         {
             await _networkBehaviour.GetCancellableAsyncDestroyTrigger()
                 .OnDestroyAsync(_onDestroyNetworkBehaviourToken.Token);
-            Reset();
+            _tokenForCurrentValue?.Cancel();
+            _tokenForCurrentValue?.Dispose();
+            _onDestroyNetworkBehaviourToken.Dispose();
         }
 
         public bool IsDirty { get; private set; }

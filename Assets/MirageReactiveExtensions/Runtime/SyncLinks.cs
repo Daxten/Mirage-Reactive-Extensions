@@ -83,9 +83,11 @@ namespace MirageReactiveExtensions.Runtime
 
         public void Reset()
         {
-            _onDestroyTokenSource?.Cancel();
-            _onDestroyTokenSource?.Dispose();
-            _onDestroyTokenSource = new CancellationTokenSource();
+            foreach (var token in _observerTokens.Select(e => e.Value).ToArray())
+            {
+                token.Cancel();
+                token.Dispose();
+            }
 
             _observerTokens.Clear();
             IsReadOnly = false;
@@ -318,12 +320,21 @@ namespace MirageReactiveExtensions.Runtime
 
             await UniTask.WhenAny(
                 UniTask.WaitUntilCanceled(ct.Token),
-                item.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(ct.Token),
-                item.OnDespawnAsync(ct.Token)
+                item.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(ct.Token).ContinueWith(() =>
+                {
+                    ct.Cancel();
+                    ct.Dispose();
+                }),
+                item.OnDespawnAsync(ct.Token).ContinueWith(() =>
+                {
+                    if (!ct.IsCancellationRequested)
+                    {
+                        ct.Cancel();
+                        ct.Dispose();
+                    }
+                })
             );
 
-            ct.Cancel();
-            ct.Dispose();
             _observerTokens.Remove(item.gameObject);
             objects.Remove(item);
             OnRemove?.Invoke(item);

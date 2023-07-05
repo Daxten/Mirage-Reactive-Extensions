@@ -7,6 +7,7 @@ using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
+using UnityEngine;
 
 namespace MirageReactiveExtensions.Runtime
 {
@@ -69,6 +70,7 @@ namespace MirageReactiveExtensions.Runtime
 
         public void Reset()
         {
+            _ct?.Cancel();
             Value = default;
             _isReadOnly = false;
             IsDirty = false;
@@ -77,7 +79,7 @@ namespace MirageReactiveExtensions.Runtime
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
             _networkBehaviour = networkBehaviour;
-            this.ForEachAsync(_ => DidChange(), _ct.Token);
+            this.ForEachAsync(_ => DidChange(), _networkBehaviour.destroyCancellationToken);
             CleanUpOnDestroy().Forget();
         }
 
