@@ -122,15 +122,22 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTaskVoid SetNullOnDestroy(T target)
         {
+            var linkedToken =
+                CancellationTokenSource.CreateLinkedTokenSource(_networkBehaviour.destroyCancellationToken, _ct.Token);
             await UniTask.WhenAny(
+                UniTask.WaitUntilCanceled(linkedToken.Token),
                 UniTask.WaitUntilCanceled(_ct.Token),
-                UniTask.WaitUntilCanceled(_networkBehaviour.destroyCancellationToken),
-                target.OnDestroyAsync(),
-                target.OnDespawnAsync()
+                target.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_ct.Token),
+                target.OnDespawnAsync(_ct.Token)
             );
+
+            linkedToken.Cancel();
+            linkedToken.Dispose();
 
             if (target == Value)
             {
+                _ct?.Cancel();
+                _ct?.Dispose();
                 Value = null;
                 OnChange?.Invoke();
             }
@@ -156,9 +163,15 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTaskVoid CleanUpOnDestroy()
         {
-            await UniTask.WaitUntil(() => _networkBehaviour != null);
-            await _networkBehaviour.OnDestroyAsync();
-            _onDestroyToken.Cancel();
+            await UniTask.WaitUntil(() => _networkBehaviour != null, cancellationToken: _ct.Token);
+            await UniTask.WhenAny(
+                _networkBehaviour.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_ct.Token),
+                UniTask.WaitUntilCanceled(_ct.Token)
+            );
+            _ct?.Cancel();
+            _ct?.Dispose();
+            _onDestroyToken?.Cancel();
+            _onDestroyToken?.Dispose();
         }
 
         public bool IsDirty { get; private set; }

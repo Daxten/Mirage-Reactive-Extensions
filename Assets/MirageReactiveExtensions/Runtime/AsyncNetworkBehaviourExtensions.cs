@@ -18,13 +18,13 @@ namespace MirageReactiveExtensions.Runtime
         {
             return GetOrAddComponent<AsyncDespawnTrigger>(component.gameObject);
         }
-        
-        public static UniTask OnDespawnAsync(this NetworkBehaviour component)
+
+        public static UniTask OnDespawnAsync(this NetworkBehaviour component, CancellationToken ct = default)
         {
-            return component.GetAsyncDespawnTrigger().OnDespawnAsync();
+            return component.GetAsyncDespawnTrigger().OnDespawnAsync(ct);
         }
     }
-    
+
     [DisallowMultipleComponent]
     public sealed class AsyncDespawnTrigger : MonoBehaviour
     {
@@ -74,7 +74,7 @@ namespace MirageReactiveExtensions.Runtime
                 cancellationTokenSource = new CancellationTokenSource();
             }
         }
-        
+
         void OnDespawn()
         {
             called = true;
@@ -84,16 +84,20 @@ namespace MirageReactiveExtensions.Runtime
             cancellationTokenSource = null;
         }
 
-        public UniTask OnDespawnAsync()
+        public UniTask OnDespawnAsync(CancellationToken ct = default)
         {
             if (called) return UniTask.CompletedTask;
-            
+
             var tcs = new UniTaskCompletionSource();
-            CancellationToken.RegisterWithoutCaptureExecutionContext(state =>
-            {
-                var tcs2 = (UniTaskCompletionSource)state;
-                tcs2.TrySetResult();
-            }, tcs);
+            var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken, ct);
+            linkedTokenSource.Token
+                .RegisterWithoutCaptureExecutionContext(state =>
+                {
+                    var tcs2 = (UniTaskCompletionSource)state;
+                    tcs2.TrySetResult();
+                    linkedTokenSource.Cancel();
+                    linkedTokenSource.Dispose();
+                }, tcs);
 
             return tcs.Task;
         }
