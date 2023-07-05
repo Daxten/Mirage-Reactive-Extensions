@@ -84,6 +84,7 @@ namespace MirageReactiveExtensions.Runtime
         public void Reset()
         {
             _onDestroyTokenSource?.Cancel();
+            _onDestroyTokenSource?.Dispose();
             _onDestroyTokenSource = new CancellationTokenSource();
 
             _observerTokens.Clear();
@@ -103,6 +104,7 @@ namespace MirageReactiveExtensions.Runtime
         {
             await _networkBehaviour.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_onDestroyTokenSource.Token);
             _onDestroyTokenSource.Cancel();
+            _onDestroyTokenSource.Dispose();
         }
 
         public bool IsDirty => _changes.Count > 0;
@@ -321,6 +323,7 @@ namespace MirageReactiveExtensions.Runtime
             );
 
             ct.Cancel();
+            ct.Dispose();
             _observerTokens.Remove(item.gameObject);
             objects.Remove(item);
             OnRemove?.Invoke(item);
@@ -334,6 +337,7 @@ namespace MirageReactiveExtensions.Runtime
             foreach (var token in _observerTokens.Select(e => e.Value).ToArray())
             {
                 token.Cancel();
+                token.Dispose();
             }
 
             _observerTokens.Clear();
@@ -354,6 +358,7 @@ namespace MirageReactiveExtensions.Runtime
                 if (_observerTokens.TryGetValue(item.gameObject, out var token))
                 {
                     token.Cancel();
+                    token.Dispose();
                     _observerTokens.Remove(item.gameObject);
                 }
 
