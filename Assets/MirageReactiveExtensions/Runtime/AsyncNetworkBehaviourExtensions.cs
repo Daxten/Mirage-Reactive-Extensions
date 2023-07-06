@@ -46,7 +46,7 @@ namespace MirageReactiveExtensions.Runtime
         {
             var identity = GetComponent<NetworkIdentity>();
 
-            if (identity.Server != null && identity.Server.Active)
+            if (identity.Server != null)
             {
                 identity.OnStopServer.AddListener(OnDespawn);
                 identity.OnStartServer.AddListener(OnSpawned);
