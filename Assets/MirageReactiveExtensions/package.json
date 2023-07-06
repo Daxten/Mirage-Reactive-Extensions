@@ -2,7 +2,7 @@
   "name": "de.daxten.mirage-reactive-extensions",
   "displayName": "Mirage Reactive Extensions",
   "description": "Provides Reactive State Monads to use with Mirage.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "unity": "2022.3",
   "author": "Alexej Haak",
   "repository": {
@@ -10,7 +10,7 @@
     "url": "https://github.com/Daxten/Mirage-Reactive-Extensions.git"
   },
   "dependencies": {
-    "com.miragenet.mirage": "145.0.0"
+    "com.miragenet.mirage": "145.0.3"
   },
   "samples": []
 }
