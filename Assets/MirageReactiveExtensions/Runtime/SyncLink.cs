@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Cysharp.Threading.Tasks.Linq;
-using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
@@ -24,12 +22,11 @@ namespace MirageReactiveExtensions.Runtime
         private CancellationTokenSource _tokenForCurrentValue;
 
         // Token is used, so we do not have to wait for _networkBehaviour to be set
-        private CancellationTokenSource _onDestroyNetworkBehaviourToken;
         private NetworkBehaviour _networkBehaviour;
         public bool HasValue => Value;
 
-        private CancellationTokenSource NewTokenForCurrentValue =>
-            CancellationTokenSource.CreateLinkedTokenSource(_onDestroyNetworkBehaviourToken.Token);
+        private CancellationTokenSource NewTokenForCurrentValue => new();
+        private bool _hasCallbackRunning;
 
         public SyncLink() : this(default)
         {
@@ -43,8 +40,19 @@ namespace MirageReactiveExtensions.Runtime
                 _netId = entity.NetId;
             }
 
-            _onDestroyNetworkBehaviourToken = new CancellationTokenSource();
             _tokenForCurrentValue = NewTokenForCurrentValue;
+            _hasCallbackRunning = false;
+        }
+        
+        public new T Value
+        {
+            get => base.Value;
+            set
+            {
+                CleanupCallback();
+                base.Value = value;
+                DidChange();
+            }
         }
 
         private void CancelRunningTasks()
@@ -64,6 +72,7 @@ namespace MirageReactiveExtensions.Runtime
             if (!Value.Identity.IsSpawned)
             {
                 Value.Identity.OnStartServer.AddListener(UpdateNetId);
+                _hasCallbackRunning = true;
             }
             else
             {
@@ -76,16 +85,14 @@ namespace MirageReactiveExtensions.Runtime
             _netId = 0;
             IsDirty = isDirty;
             _tokenForCurrentValue?.Cancel();
-            _tokenForCurrentValue?.Dispose();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             OnChange?.Invoke();
         }
 
         private void UpdateNetId()
         {
-            Value.Identity.OnStartServer.RemoveListener(UpdateNetId);
+            CleanupCallback();
             _tokenForCurrentValue?.Cancel();
-            _tokenForCurrentValue?.Dispose();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = Value.NetId;
             IsDirty = true;
@@ -120,16 +127,15 @@ namespace MirageReactiveExtensions.Runtime
         {
             var netId = reader.ReadPackedUInt32();
             if (netId == _netId) return;
-            
+
             // we do not need to reset the token for null, since we don't have start
             // any tasks for it
             if (_netId > 0)
             {
                 _tokenForCurrentValue?.Cancel();
-                _tokenForCurrentValue?.Dispose();
                 _tokenForCurrentValue = NewTokenForCurrentValue;
             }
-            
+
             if (netId > 0)
             {
                 _netId = netId;
@@ -155,11 +161,7 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTaskVoid SetNullOnDestroy(T target)
         {
-            await UniTask.WhenAny(
-                UniTask.WaitUntilCanceled(_tokenForCurrentValue.Token),
-                target.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_tokenForCurrentValue.Token),
-                target.OnDespawnAsync(_tokenForCurrentValue.Token)
-            );
+            await target.OnDespawnAsyncWithCancellationToken(_tokenForCurrentValue.Token);
 
             if (target == Value)
                 SwitchToNull(false);
@@ -173,26 +175,48 @@ namespace MirageReactiveExtensions.Runtime
         public void Reset()
         {
             _tokenForCurrentValue?.Cancel();
-            _tokenForCurrentValue?.Dispose();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = 0;
             IsDirty = false;
+            CleanupCallback();
+        }
+
+        private void CleanupCallback()
+        {
+            if (_hasCallbackRunning)
+            {
+                Value.Identity.OnStartServer.RemoveListener(UpdateNetId);
+                _hasCallbackRunning = false;
+            }
         }
 
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
-            _networkBehaviour = networkBehaviour;
-            this.ForEachAsync(_ => DidChange(), _onDestroyNetworkBehaviourToken.Token);
-            CleanUpOnDestroy().Forget();
+            if (_networkBehaviour != null && networkBehaviour != _networkBehaviour)
+            {
+                Debug.LogError("NetworkBehaviour should never change for SyncLink.");
+                return;
+            }
+
+            if (_networkBehaviour == null)
+            {
+                // Initialize Callbacks
+                _networkBehaviour = networkBehaviour;
+                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopServer);
+                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopClient);
+            }
         }
 
-        private async UniTaskVoid CleanUpOnDestroy()
+        private void OnStopClient()
         {
-            await _networkBehaviour.GetCancellableAsyncDestroyTrigger()
-                .OnDestroyAsync(_onDestroyNetworkBehaviourToken.Token);
+            if (_networkBehaviour.IsServer) return;
             _tokenForCurrentValue?.Cancel();
-            _tokenForCurrentValue?.Dispose();
-            _onDestroyNetworkBehaviourToken.Dispose();
+        }
+
+        private void OnStopServer()
+        {
+            _tokenForCurrentValue?.Cancel();
+            Value = null;
         }
 
         public bool IsDirty { get; private set; }

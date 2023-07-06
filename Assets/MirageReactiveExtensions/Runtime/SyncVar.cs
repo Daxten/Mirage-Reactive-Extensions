@@ -2,12 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using Cysharp.Threading.Tasks.Linq;
-using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
-using UnityEngine;
 
 namespace MirageReactiveExtensions.Runtime
 {
@@ -26,6 +23,16 @@ namespace MirageReactiveExtensions.Runtime
         public SyncVar(T entity) : base(entity)
         {
             _ct = new CancellationTokenSource();
+        }
+
+        public new T Value
+        {
+            get => base.Value;
+            set
+            {
+                base.Value = value;
+                DidChange();
+            }
         }
 
         private void DidChange()
@@ -70,7 +77,6 @@ namespace MirageReactiveExtensions.Runtime
 
         public void Reset()
         {
-            _ct?.Cancel();
             Value = default;
             _isReadOnly = false;
             IsDirty = false;
@@ -78,17 +84,8 @@ namespace MirageReactiveExtensions.Runtime
 
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
-            _networkBehaviour = networkBehaviour;
-            this.ForEachAsync(_ => DidChange(), _networkBehaviour.destroyCancellationToken);
-            CleanUpOnDestroy().Forget();
         }
 
-        private async UniTaskVoid CleanUpOnDestroy()
-        {
-            await _networkBehaviour.OnDestroyAsync();
-            _ct.Cancel();
-        }
-        
 
         public bool IsDirty { get; private set; }
         public event Action OnChange;

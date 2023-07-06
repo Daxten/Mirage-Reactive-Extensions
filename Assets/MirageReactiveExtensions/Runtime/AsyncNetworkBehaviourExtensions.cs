@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Cysharp.Threading.Tasks.Triggers;
 using Mirage;
@@ -14,14 +15,24 @@ namespace MirageReactiveExtensions.Runtime
             return gameObject.TryGetComponent(out T t) ? t : gameObject.AddComponent<T>();
         }
 
+        public static CancellationToken GetDespawnCancellationToken(this NetworkBehaviour component)
+        {
+            return GetOrAddComponent<AsyncDespawnTrigger>(component.gameObject).CancellationToken;
+        }
+
         public static AsyncDespawnTrigger GetAsyncDespawnTrigger(this NetworkBehaviour component)
         {
             return GetOrAddComponent<AsyncDespawnTrigger>(component.gameObject);
         }
 
-        public static UniTask OnDespawnAsync(this NetworkBehaviour component, CancellationToken ct = default)
+        public static UniTask OnDespawnAsyncWithCancellationToken(this NetworkBehaviour component, CancellationToken ct)
         {
-            return component.GetAsyncDespawnTrigger().OnDespawnAsync(ct);
+            return component.GetAsyncDespawnTrigger().OnDespawnAsyncWithCancellationToken(ct);
+        }
+
+        public static UniTask OnDespawnAsync(this NetworkBehaviour component)
+        {
+            return component.GetAsyncDespawnTrigger().OnDespawnAsync();
         }
     }
 
@@ -29,12 +40,12 @@ namespace MirageReactiveExtensions.Runtime
     public sealed class AsyncDespawnTrigger : MonoBehaviour
     {
         bool called = false;
-        CancellationTokenSource cancellationTokenSource;
+        CancellationTokenSource despawnTokenSource;
 
         private void Awake()
         {
             var identity = GetComponent<NetworkIdentity>();
-            if (identity.IsServer)
+            if (identity.Server.Active)
             {
                 identity.OnStopServer.AddListener(OnDespawn);
                 identity.OnStartServer.AddListener(OnSpawned);
@@ -50,19 +61,23 @@ namespace MirageReactiveExtensions.Runtime
         {
             get
             {
-                if (cancellationTokenSource == null)
+                if (despawnTokenSource == null)
                 {
-                    cancellationTokenSource = new CancellationTokenSource();
+                    despawnTokenSource = new CancellationTokenSource();
                 }
 
-                return cancellationTokenSource.Token;
+                return despawnTokenSource.Token;
             }
         }
 
         private void OnDestroy()
         {
-            cancellationTokenSource?.Cancel();
-            cancellationTokenSource?.Dispose();
+            if (!called)
+            {
+                called = true;
+                despawnTokenSource?.Cancel();
+                despawnTokenSource?.Dispose();
+            }
         }
 
         void OnSpawned()
@@ -70,21 +85,34 @@ namespace MirageReactiveExtensions.Runtime
             // Object has been despawned and is now getting reused, e.g. object pool
             if (called)
             {
+                despawnTokenSource?.Dispose();
+                despawnTokenSource = null;
                 called = false;
-                cancellationTokenSource = new CancellationTokenSource();
             }
         }
 
         void OnDespawn()
         {
+            if (called) return;
             called = true;
-
-            cancellationTokenSource?.Cancel();
-            cancellationTokenSource?.Dispose();
-            cancellationTokenSource = null;
+            despawnTokenSource?.Cancel();
         }
 
-        public UniTask OnDespawnAsync(CancellationToken ct = default)
+        public UniTask OnDespawnAsync()
+        {
+            if (called) return UniTask.CompletedTask;
+
+            var tcs = new UniTaskCompletionSource();
+            CancellationToken.RegisterWithoutCaptureExecutionContext(state =>
+            {
+                var tcs2 = (UniTaskCompletionSource)state;
+                tcs2.TrySetResult();
+            }, tcs);
+
+            return tcs.Task;
+        }
+
+        public UniTask OnDespawnAsyncWithCancellationToken(CancellationToken ct = default)
         {
             if (called) return UniTask.CompletedTask;
 

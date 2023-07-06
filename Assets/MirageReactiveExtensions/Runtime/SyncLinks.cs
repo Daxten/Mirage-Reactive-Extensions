@@ -21,10 +21,8 @@ namespace MirageReactiveExtensions.Runtime
         public bool IsReadOnly { get; private set; }
         void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
 
-        private CancellationTokenSource _onDestroyTokenSource;
-
-        private CancellationTokenSource NewObserverToken =>
-            CancellationTokenSource.CreateLinkedTokenSource(_onDestroyTokenSource.Token);
+        private CancellationTokenSource _onDespawnTokenSource;
+        private CancellationTokenSource NewObserverToken => new();
 
         private NetworkBehaviour _networkBehaviour;
         internal int ChangeCount => _changes.Count;
@@ -78,7 +76,7 @@ namespace MirageReactiveExtensions.Runtime
         public SyncLinks()
         {
             objects = new HashSet<T>();
-            _onDestroyTokenSource = new CancellationTokenSource();
+            _onDespawnTokenSource = new CancellationTokenSource();
         }
 
         public void Reset()
@@ -86,7 +84,6 @@ namespace MirageReactiveExtensions.Runtime
             foreach (var token in _observerTokens.Select(e => e.Value).ToArray())
             {
                 token.Cancel();
-                token.Dispose();
             }
 
             _observerTokens.Clear();
@@ -98,15 +95,40 @@ namespace MirageReactiveExtensions.Runtime
 
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
-            _networkBehaviour = networkBehaviour;
-            CleanupOnNetworkBehaviourDestroy().Forget();
+            if (_networkBehaviour != null && networkBehaviour != _networkBehaviour)
+            {
+                Debug.LogError("NetworkBehaviour should never change for SyncLink.");
+                return;
+            }
+
+            if (_networkBehaviour == null)
+            {
+                // Initialize Callbacks
+                _networkBehaviour = networkBehaviour;
+                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopServer);
+                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopClient);
+            }
         }
 
-        private async UniTaskVoid CleanupOnNetworkBehaviourDestroy()
+        private void OnStopClient()
         {
-            await _networkBehaviour.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(_onDestroyTokenSource.Token);
-            _onDestroyTokenSource.Cancel();
-            _onDestroyTokenSource.Dispose();
+            if (_networkBehaviour.IsServer) return;
+            FullCleanup();
+        }
+
+        private void OnStopServer()
+        {
+            FullCleanup();
+        }
+
+        private void FullCleanup()
+        {
+            _onDespawnTokenSource.Cancel();
+            _onDespawnTokenSource = new CancellationTokenSource();
+            foreach (var cancellationTokenSource in _observerTokens.Select(e => e.Value).ToArray())
+            {
+                cancellationTokenSource.Cancel();
+            }
         }
 
         public bool IsDirty => _changes.Count > 0;
@@ -201,7 +223,7 @@ namespace MirageReactiveExtensions.Runtime
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
                 await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                    cancellationToken: _onDestroyTokenSource.Token, timing: PlayerLoopTiming.EarlyUpdate);
+                    cancellationToken: _onDespawnTokenSource.Token, timing: PlayerLoopTiming.EarlyUpdate);
             }
 
             var comp = networkIdentity.GetComponent<T>();
@@ -219,20 +241,21 @@ namespace MirageReactiveExtensions.Runtime
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
                 await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                    cancellationToken: _networkBehaviour.destroyCancellationToken,
+                    cancellationToken: _onDespawnTokenSource.Token,
                     timing: PlayerLoopTiming.EarlyUpdate);
             }
 
             var comp = networkIdentity.GetComponent<T>();
-            objects.Remove(comp);
             if (_observerTokens.TryGetValue(comp.gameObject, out var t))
             {
                 t.Cancel();
-                t.Dispose();
                 _observerTokens.Remove(comp.gameObject);
             }
 
-            OnRemove?.Invoke(comp);
+            if (objects.Remove(comp))
+            {
+                OnRemove?.Invoke(comp);
+            }
         }
 
         public void OnDeserializeDelta(NetworkReader reader)
@@ -318,39 +341,24 @@ namespace MirageReactiveExtensions.Runtime
                 _observerTokens[item.gameObject] = ct;
             }
 
-            await UniTask.WhenAny(
-                UniTask.WaitUntilCanceled(ct.Token),
-                item.GetCancellableAsyncDestroyTrigger().OnDestroyAsync(ct.Token).ContinueWith(() =>
-                {
-                    ct.Cancel();
-                    ct.Dispose();
-                }),
-                item.OnDespawnAsync(ct.Token).ContinueWith(() =>
-                {
-                    if (!ct.IsCancellationRequested)
-                    {
-                        ct.Cancel();
-                        ct.Dispose();
-                    }
-                })
-            );
-
+            await item.OnDespawnAsyncWithCancellationToken(ct.Token);
             _observerTokens.Remove(item.gameObject);
-            objects.Remove(item);
-            OnRemove?.Invoke(item);
+            if (objects.Remove(item))
+            {
+                OnRemove?.Invoke(item);
+            }
         }
 
         void ICollection<T>.Add(T item) => _ = Add(item);
 
         public void Clear()
         {
-            objects.Clear();
             foreach (var token in _observerTokens.Select(e => e.Value).ToArray())
             {
                 token.Cancel();
-                token.Dispose();
             }
 
+            objects.Clear();
             _observerTokens.Clear();
             OnClear?.Invoke();
             AddOperation(Operation.OP_CLEAR);
@@ -364,17 +372,15 @@ namespace MirageReactiveExtensions.Runtime
         {
             if (!item) return false;
 
+            if (_observerTokens.TryGetValue(item.gameObject, out var token))
+            {
+                token.Cancel();
+                _observerTokens.Remove(item.gameObject);
+            }
+
             if (objects.Remove(item))
             {
-                if (_observerTokens.TryGetValue(item.gameObject, out var token))
-                {
-                    token.Cancel();
-                    token.Dispose();
-                    _observerTokens.Remove(item.gameObject);
-                }
-
                 OnRemove?.Invoke(item);
-
                 AddOperation(Operation.OP_REMOVE, item);
                 return true;
             }
