@@ -15,6 +15,7 @@ namespace MirageReactiveExtensions.Runtime
     public class SyncLinks<T> : ISet<T>, ISyncObject where T : NetworkBehaviour
     {
         private readonly HashSet<T> objects;
+
         private Dictionary<GameObject, CancellationTokenSource> _observerTokens = new();
 
         public int Count => objects.Count;
@@ -26,7 +27,6 @@ namespace MirageReactiveExtensions.Runtime
 
         private NetworkBehaviour _networkBehaviour;
         internal int ChangeCount => _changes.Count;
-
 
         /// <summary>
         /// Raised when an element is added to the list.
@@ -106,7 +106,7 @@ namespace MirageReactiveExtensions.Runtime
                 // Initialize Callbacks
                 _networkBehaviour = networkBehaviour;
                 _networkBehaviour.Identity.OnStopServer.AddListener(OnStopServer);
-                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopClient);
+                _networkBehaviour.Identity.OnStopClient.AddListener(OnStopClient);
             }
         }
 
@@ -182,14 +182,14 @@ namespace MirageReactiveExtensions.Runtime
                 switch (change.Operation)
                 {
                     case Operation.OP_ADD:
-                        writer.Write(change.Item);
+                        writer.WritePackedUInt32(change.Item);
                         break;
 
                     case Operation.OP_CLEAR:
                         break;
 
                     case Operation.OP_REMOVE:
-                        writer.Write(change.Item);
+                        writer.WritePackedUInt32(change.Item);
                         break;
                 }
             }
@@ -236,7 +236,6 @@ namespace MirageReactiveExtensions.Runtime
 
         private async UniTaskVoid EventuallyRemove(IObjectLocator locator, uint netId)
         {
-            await UniTask.WaitUntil(() => _networkBehaviour != null);
             NetworkIdentity networkIdentity = null;
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
@@ -270,10 +269,10 @@ namespace MirageReactiveExtensions.Runtime
             {
                 var operation = (Operation)reader.ReadByte();
 
+
                 // apply the operation only if it is a new change
                 // that we have not applied yet
                 var apply = _changesAhead == 0;
-
                 switch (operation)
                 {
                     case Operation.OP_ADD:
@@ -321,8 +320,8 @@ namespace MirageReactiveExtensions.Runtime
 
             if (objects.Add(item))
             {
-                OnAdd?.Invoke(item);
                 RemoveOnDestroy(item).Forget();
+                OnAdd?.Invoke(item);
                 AddOperation(Operation.OP_ADD, item);
                 return true;
             }
@@ -333,9 +332,7 @@ namespace MirageReactiveExtensions.Runtime
         private async UniTaskVoid RemoveOnDestroy(T item)
         {
             CancellationTokenSource ct;
-            if (_observerTokens.TryGetValue(item.gameObject, out var t1))
-                ct = t1;
-            else
+            if (!_observerTokens.TryGetValue(item.gameObject, out ct))
             {
                 ct = NewObserverToken;
                 _observerTokens[item.gameObject] = ct;
@@ -345,6 +342,7 @@ namespace MirageReactiveExtensions.Runtime
             _observerTokens.Remove(item.gameObject);
             if (objects.Remove(item))
             {
+                if (_networkBehaviour.IsServer) AddOperation(Operation.OP_REMOVE, item);
                 OnRemove?.Invoke(item);
             }
         }
@@ -372,17 +370,16 @@ namespace MirageReactiveExtensions.Runtime
         {
             if (!item) return false;
 
+            if (objects.Remove(item))
+            {
+                AddOperation(Operation.OP_REMOVE, item);
+                OnRemove?.Invoke(item);
+                return true;
+            }
+
             if (_observerTokens.TryGetValue(item.gameObject, out var token))
             {
                 token.Cancel();
-                _observerTokens.Remove(item.gameObject);
-            }
-
-            if (objects.Remove(item))
-            {
-                OnRemove?.Invoke(item);
-                AddOperation(Operation.OP_REMOVE, item);
-                return true;
             }
 
             return false;

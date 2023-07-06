@@ -45,7 +45,8 @@ namespace MirageReactiveExtensions.Runtime
         private void Awake()
         {
             var identity = GetComponent<NetworkIdentity>();
-            if (identity.Server.Active)
+
+            if (identity.Server != null && identity.Server.Active)
             {
                 identity.OnStopServer.AddListener(OnDespawn);
                 identity.OnStartServer.AddListener(OnSpawned);
@@ -97,6 +98,7 @@ namespace MirageReactiveExtensions.Runtime
             called = true;
             despawnTokenSource?.Cancel();
         }
+
 
         public UniTask OnDespawnAsync()
         {

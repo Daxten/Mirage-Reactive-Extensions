@@ -203,7 +203,7 @@ namespace MirageReactiveExtensions.Runtime
                 // Initialize Callbacks
                 _networkBehaviour = networkBehaviour;
                 _networkBehaviour.Identity.OnStopServer.AddListener(OnStopServer);
-                _networkBehaviour.Identity.OnStopServer.AddListener(OnStopClient);
+                _networkBehaviour.Identity.OnStopClient.AddListener(OnStopClient);
             }
         }
 
