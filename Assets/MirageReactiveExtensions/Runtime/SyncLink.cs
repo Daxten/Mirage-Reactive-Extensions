@@ -43,7 +43,7 @@ namespace MirageReactiveExtensions.Runtime
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _hasCallbackRunning = false;
         }
-        
+
         public new T Value
         {
             get => base.Value;
@@ -80,10 +80,16 @@ namespace MirageReactiveExtensions.Runtime
             }
         }
 
-        private void SwitchToNull(bool isDirty = true)
+        private void SwitchToNull()
         {
+            if (Value != null)
+            {
+                ClearCallbacks(Value);
+                Value = null;
+            }
+
             _netId = 0;
-            IsDirty = isDirty;
+            IsDirty = _networkBehaviour.Identity.Server != null && _networkBehaviour.Identity.Server.Active;
             _tokenForCurrentValue?.Cancel();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             OnChange?.Invoke();
@@ -148,7 +154,7 @@ namespace MirageReactiveExtensions.Runtime
                 }
 
                 Value = target.GetComponent<T>();
-                SetNullOnDestroy(Value).Forget();
+                SetNullOnDespawn(Value);
             }
             else
             {
@@ -159,12 +165,28 @@ namespace MirageReactiveExtensions.Runtime
             OnChange?.Invoke();
         }
 
-        private async UniTaskVoid SetNullOnDestroy(T target)
+        private void ClearCallbacks(T target)
         {
-            await target.OnDespawnAsyncWithCancellationToken(_tokenForCurrentValue.Token);
+            if (target.Identity.Server != null && target.Identity.Server.Active)
+            {
+                target.Identity.OnStopServer.RemoveListener(SwitchToNull);
+            }
+            else
+            {
+                target.Identity.OnStopClient.RemoveListener(SwitchToNull);
+            }
+        }
 
-            if (target == Value)
-                SwitchToNull(false);
+        private void SetNullOnDespawn(T target)
+        {
+            if (target.Identity.Server != null && target.Identity.Server.Active)
+            {
+                target.Identity.OnStopServer.AddListener(SwitchToNull);
+            }
+            else
+            {
+                target.Identity.OnStopClient.AddListener(SwitchToNull);
+            }
         }
 
         public void OnDeserializeDelta(NetworkReader reader)

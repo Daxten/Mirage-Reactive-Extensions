@@ -17,6 +17,7 @@ namespace MirageReactiveExtensions.Runtime
         private readonly HashSet<T> objects;
 
         private Dictionary<GameObject, CancellationTokenSource> _observerTokens = new();
+        private Dictionary<uint, CancellationTokenSource> _eventuallyAdd = new();
 
         public int Count => objects.Count;
         public bool IsReadOnly { get; private set; }
@@ -77,6 +78,7 @@ namespace MirageReactiveExtensions.Runtime
         {
             objects = new HashSet<T>();
             _onDespawnTokenSource = new CancellationTokenSource();
+            _eventuallyAdd = new();
         }
 
         public void Reset()
@@ -222,8 +224,14 @@ namespace MirageReactiveExtensions.Runtime
             NetworkIdentity networkIdentity = null;
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
+                if (!_eventuallyAdd.TryGetValue(netId, out var cts))
+                {
+                    cts = new CancellationTokenSource();
+                    _eventuallyAdd[netId] = cts;
+                }
+
                 await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                    cancellationToken: _onDespawnTokenSource.Token, timing: PlayerLoopTiming.EarlyUpdate);
+                    cancellationToken: cts.Token, timing: PlayerLoopTiming.EarlyUpdate);
             }
 
             var comp = networkIdentity.GetComponent<T>();
@@ -234,26 +242,34 @@ namespace MirageReactiveExtensions.Runtime
         }
 
 
-        private async UniTaskVoid EventuallyRemove(IObjectLocator locator, uint netId)
+        private void Remove(IObjectLocator locator, uint netId)
         {
             NetworkIdentity networkIdentity = null;
             if (!locator.TryGetIdentity(netId, out networkIdentity))
             {
-                await UniTask.WaitUntil(() => locator.TryGetIdentity(netId, out networkIdentity),
-                    cancellationToken: _onDespawnTokenSource.Token,
-                    timing: PlayerLoopTiming.EarlyUpdate);
+                if (_eventuallyAdd.TryGetValue(netId, out var cts))
+                {
+                    cts.Cancel();
+                }
+                else
+                {
+                    Debug.LogWarning($"Could not remove netId: {netId}, this state should be impossible.");
+                }
             }
-
-            var comp = networkIdentity.GetComponent<T>();
-            if (_observerTokens.TryGetValue(comp.gameObject, out var t))
+            else
             {
-                t.Cancel();
-                _observerTokens.Remove(comp.gameObject);
-            }
+                var comp = networkIdentity.GetComponent<T>();
+                if (_observerTokens.TryGetValue(comp.gameObject, out var t))
+                {
+                    t.Cancel();
+                    _observerTokens.Remove(comp.gameObject);
+                }
 
-            if (objects.Remove(comp))
-            {
-                OnRemove?.Invoke(comp);
+                if (objects.Remove(comp))
+                {
+                    OnRemove?.Invoke(comp);
+                    OnChange?.Invoke();
+                }
             }
         }
 
@@ -284,7 +300,7 @@ namespace MirageReactiveExtensions.Runtime
                         break;
                     case Operation.OP_REMOVE:
                         netId = reader.ReadPackedUInt32();
-                        if (apply) EventuallyRemove(locator, netId).Forget();
+                        if (apply) Remove(locator, netId);
                         break;
                 }
 
