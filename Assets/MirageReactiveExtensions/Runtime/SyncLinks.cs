@@ -250,6 +250,7 @@ namespace MirageReactiveExtensions.Runtime
                 if (_eventuallyAdd.TryGetValue(netId, out var cts))
                 {
                     cts.Cancel();
+                    _eventuallyAdd.Remove(netId);
                 }
                 else
                 {
