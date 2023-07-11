@@ -49,14 +49,20 @@ namespace MirageReactiveExtensions.Runtime
             get => base.Value;
             set
             {
-                CleanupCallback();
+                StopWaitingForSpawn();
+                if (Value != null)
+                {
+                    ClearCallbacks(Value);
+                }
+
                 base.Value = value;
+
+                if (Value != null)
+                {
+                    SetCallbacks(Value);
+                }
                 DidChange();
             }
-        }
-
-        private void CancelRunningTasks()
-        {
         }
 
         private void DidChange()
@@ -89,7 +95,7 @@ namespace MirageReactiveExtensions.Runtime
             }
 
             _netId = 0;
-            IsDirty = _networkBehaviour.Identity.Server != null && _networkBehaviour.Identity.Server.Active;
+            IsDirty = _networkBehaviour.Identity.Server != null;
             _tokenForCurrentValue?.Cancel();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             OnChange?.Invoke();
@@ -97,7 +103,7 @@ namespace MirageReactiveExtensions.Runtime
 
         private void UpdateNetId()
         {
-            CleanupCallback();
+            StopWaitingForSpawn();
             _tokenForCurrentValue?.Cancel();
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = Value.NetId;
@@ -154,7 +160,7 @@ namespace MirageReactiveExtensions.Runtime
                 }
 
                 Value = target.GetComponent<T>();
-                SetNullOnDespawn(Value);
+                SetCallbacks(Value);
             }
             else
             {
@@ -167,7 +173,7 @@ namespace MirageReactiveExtensions.Runtime
 
         private void ClearCallbacks(T target)
         {
-            if (target.Identity.Server != null && target.Identity.Server.Active)
+            if (target.Identity.Server != null)
             {
                 target.Identity.OnStopServer.RemoveListener(SwitchToNull);
             }
@@ -177,9 +183,9 @@ namespace MirageReactiveExtensions.Runtime
             }
         }
 
-        private void SetNullOnDespawn(T target)
+        private void SetCallbacks(T target)
         {
-            if (target.Identity.Server != null && target.Identity.Server.Active)
+            if (target.Identity.Server != null)
             {
                 target.Identity.OnStopServer.AddListener(SwitchToNull);
             }
@@ -200,10 +206,10 @@ namespace MirageReactiveExtensions.Runtime
             _tokenForCurrentValue = NewTokenForCurrentValue;
             _netId = 0;
             IsDirty = false;
-            CleanupCallback();
+            StopWaitingForSpawn();
         }
 
-        private void CleanupCallback()
+        private void StopWaitingForSpawn()
         {
             if (_hasCallbackRunning)
             {
@@ -233,12 +239,31 @@ namespace MirageReactiveExtensions.Runtime
         {
             if (_networkBehaviour.IsServer) return;
             _tokenForCurrentValue?.Cancel();
+            if (Value != null)
+            {
+                ClearCallbacks(Value);
+                Value = null;
+            }
+
+            _netId = 0;
+            IsDirty = false;
+            _tokenForCurrentValue?.Cancel();
+            _tokenForCurrentValue = NewTokenForCurrentValue;
         }
 
         private void OnStopServer()
         {
             _tokenForCurrentValue?.Cancel();
-            Value = null;
+            if (Value != null)
+            {
+                ClearCallbacks(Value);
+                Value = null;
+            }
+
+            _netId = 0;
+            IsDirty = false;
+            _tokenForCurrentValue?.Cancel();
+            _tokenForCurrentValue = NewTokenForCurrentValue;
         }
 
         public bool IsDirty { get; private set; }

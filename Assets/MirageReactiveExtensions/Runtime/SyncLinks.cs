@@ -252,10 +252,6 @@ namespace MirageReactiveExtensions.Runtime
                     cts.Cancel();
                     _eventuallyAdd.Remove(netId);
                 }
-                else
-                {
-                    Debug.LogWarning($"Could not remove netId: {netId}, this state should be impossible.");
-                }
             }
             else
             {
