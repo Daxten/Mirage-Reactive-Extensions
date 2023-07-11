@@ -90,8 +90,9 @@ namespace MirageReactiveExtensions.Runtime
         {
             if (Value != null)
             {
+                StopWaitingForSpawn();
                 ClearCallbacks(Value);
-                Value = null;
+                base.Value = null;
             }
 
             _netId = 0;
@@ -239,10 +240,10 @@ namespace MirageReactiveExtensions.Runtime
         {
             if (_networkBehaviour.IsServer) return;
             _tokenForCurrentValue?.Cancel();
-            if (Value != null)
+            if (base.Value != null)
             {
                 ClearCallbacks(Value);
-                Value = null;
+                base.Value = null;
             }
 
             _netId = 0;
@@ -254,10 +255,10 @@ namespace MirageReactiveExtensions.Runtime
         private void OnStopServer()
         {
             _tokenForCurrentValue?.Cancel();
-            if (Value != null)
+            if (base.Value != null)
             {
                 ClearCallbacks(Value);
-                Value = null;
+                base.Value = null;
             }
 
             _netId = 0;
