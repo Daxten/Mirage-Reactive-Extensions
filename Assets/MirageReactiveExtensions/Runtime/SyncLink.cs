@@ -258,7 +258,6 @@ namespace MirageReactiveExtensions.Runtime
             if (base.Value != null)
             {
                 ClearCallbacks(Value);
-                base.Value = null;
             }
 
             _netId = 0;
