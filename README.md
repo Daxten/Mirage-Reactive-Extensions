@@ -53,7 +53,7 @@ class A extends NetworkBehaviour {
          resourcesMined += Time.deltaTime * resourceRate;
       }
 
-      Debug.Log($"This Value [{resourcesMined}] will go up on every frame, event for the Client! Without prediction it would only go up on every sync step and would look laggy");
+      Debug.Log($"This Value [{resourcesMined.Value}] will go up on every frame, event for the Client! Without prediction it would only go up on every sync step and would look laggy");
    }
 }
 ```
