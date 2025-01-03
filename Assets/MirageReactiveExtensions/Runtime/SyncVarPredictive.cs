@@ -33,7 +33,6 @@ namespace MirageReactiveExtensions.Runtime
         }
 
         public Predict Prediction { get; set; }
-
         public double LastUpdate { get; private set; }
         public T LastSyncedValue => base.Value;
 
@@ -62,7 +61,10 @@ namespace MirageReactiveExtensions.Runtime
         public void UpdatePrediction(bool force = false)
         {
             if (force || _predictedFrame != Time.frameCount)
+            {
                 _predictedValue = Prediction(base.Value, _networkBehaviour.NetworkTime.Time - LastUpdate);
+                DidChange();
+            }
         }
 
         void ISyncObject.SetShouldSyncFrom(bool shouldSync)
@@ -78,6 +80,7 @@ namespace MirageReactiveExtensions.Runtime
         public void OnSerializeAll(NetworkWriter writer)
         {
             writer.Write(Value);
+            writer.WriteDouble(_networkBehaviour.NetworkTime.Time);
         }
 
         public void OnSerializeDelta(NetworkWriter writer)
@@ -88,11 +91,12 @@ namespace MirageReactiveExtensions.Runtime
         public void OnDeserializeAll(NetworkReader reader)
         {
             var obj = reader.Read<T>();
+            var lastUpdate = reader.ReadDouble();
 
             if (Comparer.Equals(obj, base.Value)) return;
 
             base.Value = obj;
-            LastUpdate = _networkBehaviour.NetworkTime.Time;
+            LastUpdate = lastUpdate;
             DidChange();
         }
 
