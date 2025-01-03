@@ -7,11 +7,10 @@ Provides Reactive extensions to Mirage.
 
 ## Download
 
-use package manager to get versions easily, or replace `#v0.0.6` with the tag, branch or full hash of the commit.
+use package manager to get versions easily, or replace `#v0.0.9` with the tag, branch or full hash of the commit.
 
-IMPORTANT: update `v0.0.6` with latest version on release page
 ```json
-"de.daxten.mirage-reactive-extensions": "https://github.com/Daxten/Mirage-Reactive-Extensions.git?path=/Assets/MirageReactiveExtensions#v0.0.6",
+"de.daxten.mirage-reactive-extensions": "https://github.com/Daxten/Mirage-Reactive-Extensions.git?path=/Assets/MirageReactiveExtensions#v0.0.9",
 ```
 
 ## SyncVar
