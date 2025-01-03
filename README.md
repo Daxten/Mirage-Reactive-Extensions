@@ -32,6 +32,33 @@ class B extends NetworkBehaviour {
 }
 ```
 
+## SyncVarPredictive
+`SyncVarPredictive<T> MyVar` is similar to `SyncVar<T>` but allows you to easily implement a function to optimisticly predict the Value.
+
+```c#
+class A extends NetworkBehaviour {
+   public SyncVarPredictive<float> resourcesMined = new();
+   public SyncVar<float> resourceRate = new();
+
+   private void Start() {
+      resourcesMined.Prediction = Prediction;
+   }
+
+   private float Prediction(float lastSyncedValue, double syncDeltatTme)
+   {
+      return (float)(lastSyncedValue + syncDeltatTme * resourceRate);
+   }
+   
+   private Update() {
+      if (IsServer) {
+         resourcesMined += Time.deltaTime * resourceRate;
+      }
+
+      Debug.Log($"This Value [{resourcesMined}] will go up on every frame, event for the Client! Without prediction it would only go up on every sync step and would look laggy");
+   }
+}
+```
+
 ## SyncLink
 `SyncLink<T>` allows you to create a Link/Relation to another Network Object. SyncLink manages all problems associated with this.
 
