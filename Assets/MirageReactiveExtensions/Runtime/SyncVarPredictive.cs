@@ -44,10 +44,7 @@ namespace MirageReactiveExtensions.Runtime
                 if (_isReadOnly)
                 {
                     Assert.IsNotNull(Prediction, "Prediction is not set");
-
-                    if (_predictedFrame != Time.frameCount)
-                        _predictedValue = Prediction(base.Value, _networkBehaviour.NetworkTime.Time - LastUpdate);
-
+                    UpdatePrediction();
                     return _predictedValue;
                 }
 
@@ -60,6 +57,12 @@ namespace MirageReactiveExtensions.Runtime
                 base.Value = value;
                 DidChange();
             }
+        }
+
+        public void UpdatePrediction(bool force = false)
+        {
+            if (force || _predictedFrame != Time.frameCount)
+                _predictedValue = Prediction(base.Value, _networkBehaviour.NetworkTime.Time - LastUpdate);
         }
 
         void ISyncObject.SetShouldSyncFrom(bool shouldSync)
