@@ -5,32 +5,57 @@ using Cysharp.Threading.Tasks;
 using Mirage;
 using Mirage.Collections;
 using Mirage.Serialization;
+using UnityEngine;
 using UnityEngine.Assertions;
 
 namespace MirageReactiveExtensions.Runtime
 {
     [Serializable]
-    public class SyncVar<T> : AsyncReactiveProperty<T>, ISyncObject
+    public class SyncVarPredictive<T> : AsyncReactiveProperty<T>, ISyncObject
     {
+        public delegate T Predict(T lastSyncedValue, double syncDeltaTime);
+
         private static EqualityComparer<T> Comparer = EqualityComparer<T>.Default;
         private CancellationTokenSource _ct;
-        [NonSerialized] private bool _isReadOnly;
 
-        public SyncVar() : this(default)
+        [NonSerialized] private bool _isReadOnly;
+        private NetworkBehaviour _networkBehaviour;
+        private int _predictedFrame;
+        private T _predictedValue;
+
+        public SyncVarPredictive() : this(default)
         {
         }
 
-        public SyncVar(T entity) : base(entity)
+        public SyncVarPredictive(T entity) : base(entity)
         {
             _ct = new CancellationTokenSource();
         }
 
+        public Predict Prediction { get; set; }
+
+        public double LastUpdate { get; private set; }
+        public T LastSyncedValue => base.Value;
+
         public new T Value
         {
-            get => base.Value;
+            get
+            {
+                if (_isReadOnly)
+                {
+                    Assert.IsNotNull(Prediction, "Prediction is not set");
+
+                    if (_predictedFrame != Time.frameCount)
+                        _predictedValue = Prediction(base.Value, _networkBehaviour.NetworkTime.Time - LastUpdate);
+
+                    return _predictedValue;
+                }
+
+                return base.Value;
+            }
             set
             {
-                Assert.IsFalse(_isReadOnly, "SyncVar can only be modified on the server");
+                Assert.IsFalse(_isReadOnly, "SyncVarPredictive can only be modified on the server");
 
                 base.Value = value;
                 DidChange();
@@ -61,9 +86,10 @@ namespace MirageReactiveExtensions.Runtime
         {
             var obj = reader.Read<T>();
 
-            if (Comparer.Equals(obj, Value)) return;
+            if (Comparer.Equals(obj, base.Value)) return;
 
             base.Value = obj;
+            LastUpdate = _networkBehaviour.NetworkTime.Time;
             DidChange();
         }
 
@@ -76,17 +102,21 @@ namespace MirageReactiveExtensions.Runtime
         {
             _isReadOnly = false;
             IsDirty = false;
-            Value = default;
+            _predictedFrame = -1;
+            _predictedValue = default;
+            _networkBehaviour = null;
             if (!_ct.IsCancellationRequested)
             {
                 _ct.Cancel();
                 _ct.Dispose();
             }
             _ct = new CancellationTokenSource();
+            Value = default;
         }
 
         public void SetNetworkBehaviour(NetworkBehaviour networkBehaviour)
         {
+            _networkBehaviour = networkBehaviour;
         }
 
 
@@ -99,7 +129,6 @@ namespace MirageReactiveExtensions.Runtime
             OnChange?.Invoke();
         }
 
-        public static implicit operator T(SyncVar<T> d) => d.Value;
-        public static explicit operator SyncVar<T>(T b) => new(b);
+        public static implicit operator T(SyncVarPredictive<T> d) => d.Value;
     }
 }

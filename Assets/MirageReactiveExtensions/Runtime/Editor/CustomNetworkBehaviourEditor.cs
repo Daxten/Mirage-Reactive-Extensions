@@ -1,15 +1,31 @@
 ﻿#if (UNITY_EDITOR)
 
 using Mirage;
-using UnityEditor;
 using UnityEditor.UIElements;
-using UnityEngine;
 using UnityEngine.UIElements;
-
+#if !EXCLUDE_REACTIVE_EXTENSIONS_NETWORK_BEHAVIOUR_INSPECTOR
+using UnityEditor;
 [CustomEditor(typeof(NetworkBehaviour), true)]
 [CanEditMultipleObjects]
+#endif
 public class CustomNetworkBehaviourEditor : NetworkBehaviourInspector
 {
+    private SyncListDrawer _syncListDrawer;
+
+    private void OnEnable()
+    {
+        // If target's base class is changed from NetworkBehaviour to MonoBehaviour
+        // then Unity temporarily keep using this Inspector causing things to break
+        if (!(target is NetworkBehaviour)) return;
+
+        _syncListDrawer = new SyncListDrawer(serializedObject.targetObject);
+    }
+
+    private void OnDisable()
+    {
+        serializedObject.Dispose();
+    }
+
     public override VisualElement CreateInspectorGUI()
     {
         var root = new VisualElement();
@@ -22,36 +38,16 @@ public class CustomNetworkBehaviourEditor : NetworkBehaviourInspector
                 : new PropertyField(iterator);
 
             // Disable the script field.
-            if (iterator.propertyPath == "m_Script")
-            {
-                field.SetEnabled(false);
-            }
+            if (iterator.propertyPath == "m_Script") field.SetEnabled(false);
 
             root.Add(field);
         }
 
         // Create the sync lists editor.
         var syncLists = _syncListDrawer.Create();
-        if (syncLists != null)
-        {
-            root.Add(syncLists);
-        }
+        if (syncLists != null) root.Add(syncLists);
 
         return root;
-    }
-
-    private SyncListDrawer _syncListDrawer;
-
-    private void OnEnable()
-    {
-        // If target's base class is changed from NetworkBehaviour to MonoBehaviour
-        // then Unity temporarily keep using this Inspector causing things to break
-        if (!(target is NetworkBehaviour))
-        {
-            return;
-        }
-
-        _syncListDrawer = new SyncListDrawer(serializedObject.targetObject);
     }
 }
 

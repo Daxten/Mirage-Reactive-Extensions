@@ -61,6 +61,7 @@ namespace MirageReactiveExtensions.Runtime
                 {
                     SetCallbacks(Value);
                 }
+
                 DidChange();
             }
         }
